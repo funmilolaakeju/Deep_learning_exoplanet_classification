@@ -4,7 +4,8 @@ This project implements deep learning models for astrophysics classification usi
 
 The pipeline includes scientific data download, preprocessing, feature scaling, model training, evaluation, visualization, and model persistence.
 
-## Live Demo
+## Live Demo: https://deeplearningexoplanetclassification-a2canngwkyriikx6qna4ne.streamlit.app/
+
 
 This project includes a deployed Streamlit web application for interactive exoplanet classification.
 
