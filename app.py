@@ -82,5 +82,4 @@ if st.button("Predict"):
     st.subheader("Class Probabilities")
 
     for class_name, probability in zip(label_encoder.classes_, probabilities[0]):
-        st.write(f"{class_name}: {probability:.4f}"), probabilities[0]):
         st.write(f"{class_name}: {probability:.4f}")
