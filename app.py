@@ -21,15 +21,19 @@ st.write(
 )
 
 # -----------------------------
-# Safe paths (IMPORTANT FIX)
+# Safe paths
 # -----------------------------
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_DIR = os.path.join(BASE_DIR, "models")
 
 # -----------------------------
-# Load model + preprocessors
+# Load model + preprocessors (FIXED)
 # -----------------------------
-model = load_model(os.path.join(MODEL_DIR, "exoplanet_mlp_model.keras"))
+model = load_model(
+    os.path.join(MODEL_DIR, "exoplanet_mlp_model.keras"),
+    compile=False   # 🔥 FIX for your error
+)
+
 scaler = joblib.load(os.path.join(MODEL_DIR, "scaler.pkl"))
 label_encoder = joblib.load(os.path.join(MODEL_DIR, "label_encoder.pkl"))
 
