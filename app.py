@@ -2,10 +2,12 @@ import os
 import numpy as np
 import streamlit as st
 import joblib
+from tensorflow.keras.models import load_model
 
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense, Dropout
 
+# ============================================================
+# PAGE CONFIG
+# ============================================================
 
 st.set_page_config(
     page_title="Exoplanet Classifier",
@@ -21,101 +23,69 @@ st.write(
 )
 
 
+# ============================================================
+# PATHS
+# ============================================================
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_DIR = os.path.join(BASE_DIR, "models")
 
-
-def build_mlp_model(input_dim, num_classes):
-    model = Sequential([
-        Dense(256, activation="relu", input_shape=(input_dim,)),
-        Dropout(0.35),
-
-        Dense(128, activation="relu"),
-        Dropout(0.30),
-
-        Dense(64, activation="relu"),
-        Dropout(0.20),
-
-        Dense(num_classes, activation="softmax"),
-    ])
-
-    return model
+MODEL_PATH = os.path.join(MODEL_DIR, "exoplanet_model_fixed.h5")
+SCALER_PATH = os.path.join(MODEL_DIR, "scaler.pkl")
+ENCODER_PATH = os.path.join(MODEL_DIR, "label_encoder.pkl")
 
 
-model = build_mlp_model(input_dim=11, num_classes=3)
+# ============================================================
+# LOAD ARTIFACTS
+# ============================================================
 
-model.load_weights(
-    os.path.join(
-        MODEL_DIR,
-        "exoplanet_mlp_weights.weights.h5"
-    )
-)
+model = load_model(MODEL_PATH, compile=False)
+scaler = joblib.load(SCALER_PATH)
+label_encoder = joblib.load(ENCODER_PATH)
 
-scaler = joblib.load(
-    os.path.join(
-        MODEL_DIR,
-        "scaler.pkl"
-    )
-)
 
-label_encoder = joblib.load(
-    os.path.join(
-        MODEL_DIR,
-        "label_encoder.pkl"
-    )
-)
-
+# ============================================================
+# INPUTS (MUST MATCH TRAINING FEATURE ORDER)
+# ============================================================
 
 st.subheader("Enter Scientific Features")
 
-koi_period = st.number_input("Orbital Period", value=10.0)
-koi_impact = st.number_input("Impact Parameter", value=0.5)
-koi_duration = st.number_input("Transit Duration", value=5.0)
-koi_depth = st.number_input("Transit Depth", value=500.0)
-koi_prad = st.number_input("Planet Radius", value=2.0)
-koi_teq = st.number_input("Equilibrium Temperature", value=700.0)
-koi_insol = st.number_input("Insolation Flux", value=100.0)
-koi_model_snr = st.number_input("Model Signal-to-Noise Ratio", value=20.0)
-koi_steff = st.number_input("Stellar Effective Temperature", value=5500.0)
-koi_slogg = st.number_input("Stellar Surface Gravity", value=4.4)
-koi_srad = st.number_input("Stellar Radius", value=1.0)
+features = np.array([[
+    st.number_input("Orbital Period", value=10.0),
+    st.number_input("Impact Parameter", value=0.5),
+    st.number_input("Transit Duration", value=5.0),
+    st.number_input("Transit Depth", value=500.0),
+    st.number_input("Planet Radius", value=2.0),
+    st.number_input("Equilibrium Temperature", value=700.0),
+    st.number_input("Insolation Flux", value=100.0),
+    st.number_input("Signal-to-Noise Ratio", value=20.0),
+    st.number_input("Stellar Effective Temperature", value=5500.0),
+    st.number_input("Stellar Surface Gravity", value=4.4),
+    st.number_input("Stellar Radius", value=1.0),
+]])
 
 
-features = np.array([
-    [
-        koi_period,
-        koi_impact,
-        koi_duration,
-        koi_depth,
-        koi_prad,
-        koi_teq,
-        koi_insol,
-        koi_model_snr,
-        koi_steff,
-        koi_slogg,
-        koi_srad,
-    ]
-])
-
+# ============================================================
+# PREPROCESS
+# ============================================================
 
 features_scaled = scaler.transform(features)
 
 
+# ============================================================
+# PREDICTION
+# ============================================================
+
 if st.button("Predict"):
+
     probabilities = model.predict(features_scaled)
 
     predicted_index = np.argmax(probabilities)
-
-    predicted_class = label_encoder.inverse_transform(
-        [predicted_index]
-    )[0]
+    predicted_class = label_encoder.inverse_transform([predicted_index])[0]
 
     st.success(f"Prediction: {predicted_class}")
 
     st.subheader("Class Probabilities")
 
-    for class_name, probability in zip(
-        label_encoder.classes_,
-        probabilities[0]
-    ):
-        st.write(f"{class_name}: {probability:.4f}")
+    for class_name, prob in zip(label_encoder.classes_, probabilities[0]):
+        st.write(f"{class_name}: {prob:.4f}")

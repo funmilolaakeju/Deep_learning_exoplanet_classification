@@ -34,6 +34,36 @@ from tensorflow.keras.layers import Dense, Dropout, Conv1D, MaxPooling1D, Flatte
 from tensorflow.keras.callbacks import EarlyStopping
 
 # ============================================================
+# IMPORTS
+# ============================================================
+
+import os
+import argparse
+import requests
+import pandas as pd
+import matplotlib.pyplot as plt
+import joblib
+import numpy as np
+
+from pathlib import Path
+from urllib.parse import quote
+
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder, StandardScaler
+from sklearn.utils.class_weight import compute_class_weight
+from sklearn.metrics import (
+    accuracy_score,
+    precision_recall_fscore_support,
+    classification_report,
+    confusion_matrix,
+)
+
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, Dropout, Conv1D, MaxPooling1D, Flatten
+from tensorflow.keras.callbacks import EarlyStopping
+
+
+# ============================================================
 # CONFIGURATION
 # ============================================================
 
@@ -56,6 +86,14 @@ FEATURE_COLUMNS = [
 
 TARGET_COLUMN = "koi_disposition"
 
+MODEL_DIR = "models"
+Path(MODEL_DIR).mkdir(parents=True, exist_ok=True)
+
+MODEL_PATH = os.path.join(MODEL_DIR, "exoplanet_model_fixed.h5")
+WEIGHTS_PATH = os.path.join(MODEL_DIR, "exoplanet_model_fixed.weights.h5")
+SCALER_PATH = os.path.join(MODEL_DIR, "scaler.pkl")
+ENCODER_PATH = os.path.join(MODEL_DIR, "label_encoder.pkl")
+
 
 # ============================================================
 # DATA DOWNLOAD
@@ -64,37 +102,28 @@ TARGET_COLUMN = "koi_disposition"
 def download_koi_data(output_path="data/koi_exoplanet_data.csv"):
     Path("data").mkdir(parents=True, exist_ok=True)
 
-    selected_columns = ", ".join([TARGET_COLUMN] + FEATURE_COLUMNS)
-
     query = f"""
-    SELECT {selected_columns}
+    SELECT {', '.join([TARGET_COLUMN] + FEATURE_COLUMNS)}
     FROM cumulative
     WHERE koi_disposition IS NOT NULL
     """
 
-    encoded_query = quote(query)
-
     url = (
         "https://exoplanetarchive.ipac.caltech.edu/TAP/sync"
-        f"?query={encoded_query}"
-        "&format=csv"
+        f"?query={quote(query)}&format=csv"
     )
 
-    print("Downloading NASA Exoplanet Archive KOI data...")
+    print("Downloading dataset...")
 
-    response = requests.get(url, timeout=60)
+    r = requests.get(url, timeout=60)
+    if r.status_code != 200:
+        raise RuntimeError("Download failed")
 
-    if response.status_code != 200:
-        raise RuntimeError(
-            f"Data download failed with status code {response.status_code}"
-        )
-
-    Path(output_path).write_text(response.text, encoding="utf-8")
-
+    Path(output_path).write_text(r.text, encoding="utf-8")
     df = pd.read_csv(output_path)
 
     if df.empty:
-        raise ValueError("Downloaded dataset is empty.")
+        raise ValueError("Empty dataset")
 
     return df
 
@@ -103,28 +132,26 @@ def download_koi_data(output_path="data/koi_exoplanet_data.csv"):
 # PREPROCESSING
 # ============================================================
 
-def preprocess_data(df):
-    df = df.copy()
-    df = df[[TARGET_COLUMN] + FEATURE_COLUMNS]
-    df = df.dropna()
+def preprocess(df):
+    df = df[[TARGET_COLUMN] + FEATURE_COLUMNS].dropna()
 
     X = df[FEATURE_COLUMNS].values
     y = df[TARGET_COLUMN].values
 
-    label_encoder = LabelEncoder()
-    y_encoded = label_encoder.fit_transform(y)
+    encoder = LabelEncoder()
+    y = encoder.fit_transform(y)
 
     scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
+    X = scaler.fit_transform(X)
 
-    return X_scaled, y_encoded, label_encoder, scaler
+    return X, y, scaler, encoder
 
 
 # ============================================================
-# MODEL DEFINITIONS
+# MODEL
 # ============================================================
 
-def build_mlp_model(input_dim, num_classes):
+def build_model(input_dim, num_classes):
     model = Sequential([
         Dense(256, activation="relu", input_shape=(input_dim,)),
         Dropout(0.35),
@@ -141,241 +168,71 @@ def build_mlp_model(input_dim, num_classes):
     model.compile(
         optimizer="adam",
         loss="sparse_categorical_crossentropy",
-        metrics=["accuracy"],
+        metrics=["accuracy"]
     )
 
     return model
 
 
-def build_cnn_model(input_shape, num_classes):
-    model = Sequential([
-        Conv1D(64, kernel_size=3, activation="relu", input_shape=input_shape),
-        MaxPooling1D(pool_size=2),
-
-        Conv1D(128, kernel_size=3, activation="relu"),
-        Flatten(),
-
-        Dense(128, activation="relu"),
-        Dropout(0.35),
-
-        Dense(64, activation="relu"),
-        Dropout(0.20),
-
-        Dense(num_classes, activation="softmax"),
-    ])
-
-    model.compile(
-        optimizer="adam",
-        loss="sparse_categorical_crossentropy",
-        metrics=["accuracy"],
-    )
-
-    return model
-
-
-def prepare_model(model_type, X_train, X_test, num_classes):
-    if model_type == "mlp":
-        model = build_mlp_model(X_train.shape[1], num_classes)
-        return model, X_train, X_test
-
-    if model_type == "cnn":
-        X_train_cnn = X_train.reshape(X_train.shape[0], X_train.shape[1], 1)
-        X_test_cnn = X_test.reshape(X_test.shape[0], X_test.shape[1], 1)
-        model = build_cnn_model((X_train.shape[1], 1), num_classes)
-        return model, X_train_cnn, X_test_cnn
-
-    raise ValueError("model_type must be either mlp or cnn")
-
-
 # ============================================================
-# VISUALIZATION
+# PIPELINE
 # ============================================================
 
-def plot_training_history(history, output_path="results/plots/training_history.png"):
-    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-
-    plt.figure()
-    plt.plot(history.history["accuracy"], label="Training Accuracy")
-    plt.plot(history.history["val_accuracy"], label="Validation Accuracy")
-    plt.plot(history.history["loss"], label="Training Loss")
-    plt.plot(history.history["val_loss"], label="Validation Loss")
-    plt.xlabel("Epoch")
-    plt.ylabel("Metric Value")
-    plt.title("Training and Validation Performance")
-    plt.legend()
-    plt.tight_layout()
-    plt.savefig(output_path)
-    plt.close()
-
-
-def plot_confusion_matrix(
-    y_true,
-    y_pred,
-    class_names,
-    output_path="results/plots/confusion_matrix.png",
-):
-    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-
-    cm = confusion_matrix(y_true, y_pred)
-
-    plt.figure(figsize=(8, 6))
-    plt.imshow(cm)
-    plt.title("Confusion Matrix")
-    plt.xlabel("Predicted Label")
-    plt.ylabel("True Label")
-    plt.xticks(np.arange(len(class_names)), class_names, rotation=45, ha="right")
-    plt.yticks(np.arange(len(class_names)), class_names)
-
-    for i in range(cm.shape[0]):
-        for j in range(cm.shape[1]):
-            plt.text(j, i, cm[i, j], ha="center", va="center")
-
-    plt.colorbar()
-    plt.tight_layout()
-    plt.savefig(output_path)
-    plt.close()
-
-
-# ============================================================
-# TRAINING PIPELINE
-# ============================================================
-
-def run_pipeline(args):
+def run():
     df = download_koi_data()
+    X, y, scaler, encoder = preprocess(df)
 
-    X, y, label_encoder, scaler = preprocess_data(df)
-
-    Path("results/models").mkdir(parents=True, exist_ok=True)
-
-    joblib.dump(scaler, "results/models/scaler.pkl")
-
-    joblib.dump(
-        label_encoder,
-    "results/models/label_encoder.pkl"
-)
+    joblib.dump(scaler, SCALER_PATH)
+    joblib.dump(encoder, ENCODER_PATH)
 
     X_train, X_test, y_train, y_test = train_test_split(
-        X,
-        y,
-        test_size=0.2,
-        random_state=SEED,
-        stratify=y,
+        X, y, test_size=0.2, random_state=SEED, stratify=y
     )
-
-    num_classes = len(np.unique(y))
 
     class_weights = compute_class_weight(
         class_weight="balanced",
         classes=np.unique(y_train),
-        y=y_train,
+        y=y_train
     )
 
     class_weight_dict = {
-        i: weight for i, weight in enumerate(class_weights)
+        cls: w for cls, w in zip(np.unique(y_train), class_weights)
     }
 
-    model, X_train_model, X_test_model = prepare_model(
-        args.model,
-        X_train,
-        X_test,
-        num_classes,
-    )
+    model = build_model(X_train.shape[1], len(np.unique(y)))
 
     early_stop = EarlyStopping(
-        monitor="val_accuracy",
+        monitor="val_loss",
         patience=10,
-        restore_best_weights=True,
-        mode="max",
+        restore_best_weights=True
     )
 
     history = model.fit(
-        X_train_model,
-        y_train,
-        validation_data=(X_test_model, y_test),
-        epochs=args.epochs,
-        batch_size=args.batch_size,
+        X_train, y_train,
+        validation_data=(X_test, y_test),
+        epochs=100,
+        batch_size=32,
         callbacks=[early_stop],
-        class_weight=class_weight_dict,
-        verbose=1,
+        class_weight=class_weight_dict
     )
 
-    probabilities = model.predict(X_test_model)
-    y_pred = np.argmax(probabilities, axis=1)
+    preds = np.argmax(model.predict(X_test), axis=1)
 
-    accuracy = accuracy_score(y_test, y_pred)
+    print("\nAccuracy:", accuracy_score(y_test, preds))
+    print(classification_report(y_test, preds))
 
-    precision, recall, f1, _ = precision_recall_fscore_support(
-        y_test,
-        y_pred,
-        average="weighted",
-        zero_division=0,
-    )
+    model.save(MODEL_PATH)
+    model.save_weights(WEIGHTS_PATH)
 
-    print("\nEvaluation Metrics")
-    print(f"Accuracy:  {accuracy:.4f}")
-    print(f"Precision: {precision:.4f}")
-    print(f"Recall:    {recall:.4f}")
-    print(f"F1 Score:  {f1:.4f}")
-
-    print("\nClassification Report")
-    print(
-        classification_report(
-            y_test,
-            y_pred,
-            target_names=label_encoder.classes_,
-            zero_division=0,
-        )
-    )
-
-    Path("results/models").mkdir(parents=True, exist_ok=True)
-
-    model_path = f"results/models/exoplanet_{args.model}_weights.weights.h5"
-    model.save_weights(model_path)
-
-    plot_training_history(history)
-    plot_confusion_matrix(y_test, y_pred, label_encoder.classes_)
-
-    print(f"\nWeights saved to {model_path}")
-    print("Plots saved to results/plots/")
+    print("\nSaved model + scaler + encoder in /models")
 
 
 # ============================================================
-# ARGUMENT PARSER
+# RUN
 # ============================================================
 
-def parse_args(args_list=None):
-    parser = argparse.ArgumentParser(
-        description="Deep learning exoplanet classification using NASA KOI data"
-    )
-
-    parser.add_argument(
-        "--model",
-        type=str,
-        default="mlp",
-        choices=["mlp", "cnn"],
-    )
-
-    parser.add_argument(
-        "--epochs",
-        type=int,
-        default=100,
-    )
-
-    parser.add_argument(
-        "--batch_size",
-        type=int,
-        default=32,
-    )
-
-    return parser.parse_args(args_list)
-
-
-# ============================================================
-# RUN PROJECT
-# ============================================================
-
-args = parse_args([])
-run_pipeline(args)
+if __name__ == "__main__":
+    run()
 
 !pip install streamlit
 
