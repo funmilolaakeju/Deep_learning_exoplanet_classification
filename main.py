@@ -9,30 +9,6 @@ Original file is located at
 
 # IMPORTS
 
-import argparse
-from pathlib import Path
-from urllib.parse import quote
-import joblib
-
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-import requests
-
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler, LabelEncoder
-from sklearn.metrics import (
-    accuracy_score,
-    precision_recall_fscore_support,
-    confusion_matrix,
-    classification_report,
-)
-from sklearn.utils.class_weight import compute_class_weight
-
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense, Dropout, Conv1D, MaxPooling1D, Flatten
-from tensorflow.keras.callbacks import EarlyStopping
-
 import os
 import numpy as np
 import pandas as pd
@@ -44,7 +20,6 @@ from urllib.parse import quote
 import tensorflow as tf
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense, Dropout
-from tensorflow.keras.callbacks import EarlyStopping
 
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder, StandardScaler
@@ -81,7 +56,7 @@ Path(MODEL_DIR).mkdir(exist_ok=True)
 
 
 # ============================================================
-# LOAD DATA
+# DATA
 # ============================================================
 
 def load_data():
@@ -96,9 +71,7 @@ def load_data():
         f"?query={quote(query)}&format=csv"
     )
 
-    df = pd.read_csv(url)
-    df = df.dropna()
-
+    df = pd.read_csv(url).dropna()
     return df
 
 
@@ -176,41 +149,27 @@ def train():
 
     model = build_model(X.shape[1], len(np.unique(y)))
 
-    early_stop = EarlyStopping(
-        monitor="val_loss",
-        patience=10,
-        restore_best_weights=True
-    )
-
     model.fit(
         X_train, y_train,
         validation_data=(X_test, y_test),
         epochs=100,
         batch_size=32,
-        callbacks=[early_stop],
         class_weight=class_weight_dict,
         verbose=1
     )
 
     preds = np.argmax(model.predict(X_test), axis=1)
 
-    print("\nAccuracy:", accuracy_score(y_test, preds))
+    print("Accuracy:", accuracy_score(y_test, preds))
     print(classification_report(y_test, preds))
 
-    # 🔥 IMPORTANT: safe .h5 saving (TF 2.12 compatible)
+    # 🔥 CRITICAL FIX FOR YOUR ERROR
     tf.keras.backend.clear_session()
+
     model.save("models/exoplanet_model_fixed.h5", save_format="h5")
 
-    print("\nModel saved successfully (.h5)")
+    print("\nModel saved safely (.h5)")
 
 
 if __name__ == "__main__":
     train()
-
-!pip install streamlit
-
-!ls
-
-!streamlit run app.py & npx localtunnel --port 8501
-
-!ps -ef | grep streamlit
