@@ -2,11 +2,12 @@ import os
 import numpy as np
 import streamlit as st
 import joblib
+import tensorflow as tf
 from tensorflow.keras.models import load_model
 
 
 # ============================================================
-# PAGE CONFIG
+# UI
 # ============================================================
 
 st.set_page_config(
@@ -18,7 +19,7 @@ st.set_page_config(
 st.title("Deep Learning Exoplanet Classification")
 
 st.write(
-    "This app predicts whether a Kepler Object of Interest is "
+    "Predict whether a Kepler Object of Interest is "
     "CANDIDATE, CONFIRMED, or FALSE POSITIVE."
 )
 
@@ -45,7 +46,7 @@ label_encoder = joblib.load(ENCODER_PATH)
 
 
 # ============================================================
-# INPUTS (MUST MATCH TRAINING FEATURE ORDER)
+# INPUTS (MUST MATCH TRAINING ORDER)
 # ============================================================
 
 st.subheader("Enter Scientific Features")
@@ -66,26 +67,26 @@ features = np.array([[
 
 
 # ============================================================
-# PREPROCESS
+# SCALE
 # ============================================================
 
-features_scaled = scaler.transform(features)
+features = scaler.transform(features)
 
 
 # ============================================================
-# PREDICTION
+# PREDICT
 # ============================================================
 
 if st.button("Predict"):
 
-    probabilities = model.predict(features_scaled)
+    probs = model.predict(features)
+    pred = np.argmax(probs)
 
-    predicted_index = np.argmax(probabilities)
-    predicted_class = label_encoder.inverse_transform([predicted_index])[0]
+    label = label_encoder.inverse_transform([pred])[0]
 
-    st.success(f"Prediction: {predicted_class}")
+    st.success(f"Prediction: {label}")
 
-    st.subheader("Class Probabilities")
+    st.subheader("Probabilities")
 
-    for class_name, prob in zip(label_encoder.classes_, probabilities[0]):
-        st.write(f"{class_name}: {prob:.4f}")
+    for cls, p in zip(label_encoder.classes_, probs[0]):
+        st.write(f"{cls}: {p:.4f}")

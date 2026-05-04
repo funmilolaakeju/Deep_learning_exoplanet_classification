@@ -33,42 +33,32 @@ from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense, Dropout, Conv1D, MaxPooling1D, Flatten
 from tensorflow.keras.callbacks import EarlyStopping
 
-# ============================================================
-# IMPORTS
-# ============================================================
-
 import os
-import argparse
-import requests
-import pandas as pd
-import matplotlib.pyplot as plt
-import joblib
 import numpy as np
-
+import pandas as pd
+import requests
+import joblib
 from pathlib import Path
 from urllib.parse import quote
+
+import tensorflow as tf
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, Dropout
+from tensorflow.keras.callbacks import EarlyStopping
 
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 from sklearn.utils.class_weight import compute_class_weight
-from sklearn.metrics import (
-    accuracy_score,
-    precision_recall_fscore_support,
-    classification_report,
-    confusion_matrix,
-)
-
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense, Dropout, Conv1D, MaxPooling1D, Flatten
-from tensorflow.keras.callbacks import EarlyStopping
+from sklearn.metrics import classification_report, accuracy_score
 
 
 # ============================================================
-# CONFIGURATION
+# CONFIG
 # ============================================================
 
 SEED = 42
 np.random.seed(SEED)
+tf.random.set_seed(SEED)
 
 FEATURE_COLUMNS = [
     "koi_period",
@@ -87,21 +77,14 @@ FEATURE_COLUMNS = [
 TARGET_COLUMN = "koi_disposition"
 
 MODEL_DIR = "models"
-Path(MODEL_DIR).mkdir(parents=True, exist_ok=True)
-
-MODEL_PATH = os.path.join(MODEL_DIR, "exoplanet_model_fixed.h5")
-WEIGHTS_PATH = os.path.join(MODEL_DIR, "exoplanet_model_fixed.weights.h5")
-SCALER_PATH = os.path.join(MODEL_DIR, "scaler.pkl")
-ENCODER_PATH = os.path.join(MODEL_DIR, "label_encoder.pkl")
+Path(MODEL_DIR).mkdir(exist_ok=True)
 
 
 # ============================================================
-# DATA DOWNLOAD
+# LOAD DATA
 # ============================================================
 
-def download_koi_data(output_path="data/koi_exoplanet_data.csv"):
-    Path("data").mkdir(parents=True, exist_ok=True)
-
+def load_data():
     query = f"""
     SELECT {', '.join([TARGET_COLUMN] + FEATURE_COLUMNS)}
     FROM cumulative
@@ -113,28 +96,17 @@ def download_koi_data(output_path="data/koi_exoplanet_data.csv"):
         f"?query={quote(query)}&format=csv"
     )
 
-    print("Downloading dataset...")
-
-    r = requests.get(url, timeout=60)
-    if r.status_code != 200:
-        raise RuntimeError("Download failed")
-
-    Path(output_path).write_text(r.text, encoding="utf-8")
-    df = pd.read_csv(output_path)
-
-    if df.empty:
-        raise ValueError("Empty dataset")
+    df = pd.read_csv(url)
+    df = df.dropna()
 
     return df
 
 
 # ============================================================
-# PREPROCESSING
+# PREPROCESS
 # ============================================================
 
 def preprocess(df):
-    df = df[[TARGET_COLUMN] + FEATURE_COLUMNS].dropna()
-
     X = df[FEATURE_COLUMNS].values
     y = df[TARGET_COLUMN].values
 
@@ -175,18 +147,21 @@ def build_model(input_dim, num_classes):
 
 
 # ============================================================
-# PIPELINE
+# TRAIN
 # ============================================================
 
-def run():
-    df = download_koi_data()
+def train():
+    df = load_data()
     X, y, scaler, encoder = preprocess(df)
 
-    joblib.dump(scaler, SCALER_PATH)
-    joblib.dump(encoder, ENCODER_PATH)
+    joblib.dump(scaler, "models/scaler.pkl")
+    joblib.dump(encoder, "models/label_encoder.pkl")
 
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=SEED, stratify=y
+        X, y,
+        test_size=0.2,
+        random_state=SEED,
+        stratify=y
     )
 
     class_weights = compute_class_weight(
@@ -196,10 +171,10 @@ def run():
     )
 
     class_weight_dict = {
-        cls: w for cls, w in zip(np.unique(y_train), class_weights)
+        c: w for c, w in zip(np.unique(y_train), class_weights)
     }
 
-    model = build_model(X_train.shape[1], len(np.unique(y)))
+    model = build_model(X.shape[1], len(np.unique(y)))
 
     early_stop = EarlyStopping(
         monitor="val_loss",
@@ -207,13 +182,14 @@ def run():
         restore_best_weights=True
     )
 
-    history = model.fit(
+    model.fit(
         X_train, y_train,
         validation_data=(X_test, y_test),
         epochs=100,
         batch_size=32,
         callbacks=[early_stop],
-        class_weight=class_weight_dict
+        class_weight=class_weight_dict,
+        verbose=1
     )
 
     preds = np.argmax(model.predict(X_test), axis=1)
@@ -221,18 +197,15 @@ def run():
     print("\nAccuracy:", accuracy_score(y_test, preds))
     print(classification_report(y_test, preds))
 
-    model.save(MODEL_PATH)
-    model.save_weights(WEIGHTS_PATH)
+    # 🔥 IMPORTANT: safe .h5 saving (TF 2.12 compatible)
+    tf.keras.backend.clear_session()
+    model.save("models/exoplanet_model_fixed.h5", save_format="h5")
 
-    print("\nSaved model + scaler + encoder in /models")
+    print("\nModel saved successfully (.h5)")
 
-
-# ============================================================
-# RUN
-# ============================================================
 
 if __name__ == "__main__":
-    run()
+    train()
 
 !pip install streamlit
 
