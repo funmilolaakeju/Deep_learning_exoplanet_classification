@@ -1,12 +1,12 @@
+import os
 import numpy as np
 import streamlit as st
 import joblib
-import os
-from tensorflow.keras.models import load_model
 
-# -----------------------------
-# Page config
-# -----------------------------
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, Dropout
+
+
 st.set_page_config(
     page_title="Exoplanet Classifier",
     page_icon="🪐",
@@ -20,22 +20,52 @@ st.write(
     "CANDIDATE, CONFIRMED, or FALSE POSITIVE."
 )
 
-# -----------------------------
-# Safe paths (IMPORTANT FIX)
-# -----------------------------
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_DIR = os.path.join(BASE_DIR, "models")
 
-# -----------------------------
-# Load model + preprocessors
-# -----------------------------
-model = load_model(os.path.join(MODEL_DIR, "exoplanet_mlp_model.h5"))
-scaler = joblib.load(os.path.join(MODEL_DIR, "scaler.pkl"))
-label_encoder = joblib.load(os.path.join(MODEL_DIR, "label_encoder.pkl"))
 
-# -----------------------------
-# User input section
-# -----------------------------
+def build_mlp_model(input_dim, num_classes):
+    model = Sequential([
+        Dense(256, activation="relu", input_shape=(input_dim,)),
+        Dropout(0.35),
+
+        Dense(128, activation="relu"),
+        Dropout(0.30),
+
+        Dense(64, activation="relu"),
+        Dropout(0.20),
+
+        Dense(num_classes, activation="softmax"),
+    ])
+
+    return model
+
+
+model = build_mlp_model(input_dim=11, num_classes=3)
+
+model.load_weights(
+    os.path.join(
+        MODEL_DIR,
+        "exoplanet_mlp_weights.weights.h5"
+    )
+)
+
+scaler = joblib.load(
+    os.path.join(
+        MODEL_DIR,
+        "scaler.pkl"
+    )
+)
+
+label_encoder = joblib.load(
+    os.path.join(
+        MODEL_DIR,
+        "label_encoder.pkl"
+    )
+)
+
+
 st.subheader("Enter Scientific Features")
 
 koi_period = st.number_input("Orbital Period", value=10.0)
@@ -50,36 +80,42 @@ koi_steff = st.number_input("Stellar Effective Temperature", value=5500.0)
 koi_slogg = st.number_input("Stellar Surface Gravity", value=4.4)
 koi_srad = st.number_input("Stellar Radius", value=1.0)
 
-# -----------------------------
-# Feature array
-# -----------------------------
-features = np.array([[
-    koi_period,
-    koi_impact,
-    koi_duration,
-    koi_depth,
-    koi_prad,
-    koi_teq,
-    koi_insol,
-    koi_model_snr,
-    koi_steff,
-    koi_slogg,
-    koi_srad,
-]])
+
+features = np.array([
+    [
+        koi_period,
+        koi_impact,
+        koi_duration,
+        koi_depth,
+        koi_prad,
+        koi_teq,
+        koi_insol,
+        koi_model_snr,
+        koi_steff,
+        koi_slogg,
+        koi_srad,
+    ]
+])
+
 
 features_scaled = scaler.transform(features)
 
-# -----------------------------
-# Prediction
-# -----------------------------
+
 if st.button("Predict"):
     probabilities = model.predict(features_scaled)
+
     predicted_index = np.argmax(probabilities)
-    predicted_class = label_encoder.inverse_transform([predicted_index])[0]
+
+    predicted_class = label_encoder.inverse_transform(
+        [predicted_index]
+    )[0]
 
     st.success(f"Prediction: {predicted_class}")
 
     st.subheader("Class Probabilities")
 
-    for class_name, probability in zip(label_encoder.classes_, probabilities[0]):
+    for class_name, probability in zip(
+        label_encoder.classes_,
+        probabilities[0]
+    ):
         st.write(f"{class_name}: {probability:.4f}")

@@ -329,13 +329,13 @@ def run_pipeline(args):
 
     Path("results/models").mkdir(parents=True, exist_ok=True)
 
-    model_path = f"results/models/exoplanet_{args.model}_model.h5"
-    model.save(model_path)
+    model_path = f"results/models/exoplanet_{args.model}_weights.weights.h5"
+    model.save_weights(model_path)
 
     plot_training_history(history)
     plot_confusion_matrix(y_test, y_pred, label_encoder.classes_)
 
-    print(f"\nModel saved to {model_path}")
+    print(f"\nWeights saved to {model_path}")
     print("Plots saved to results/plots/")
 
 
