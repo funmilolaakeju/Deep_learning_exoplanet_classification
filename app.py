@@ -37,32 +37,38 @@ ENCODER_PATH = os.path.join(MODEL_DIR, "label_encoder.pkl")
 
 
 # ============================================================
-# LOAD ARTIFACTS
+# SAFE LOAD (FIX FOR YOUR ERROR)
 # ============================================================
 
-model = load_model(MODEL_PATH, compile=False)
-scaler = joblib.load(SCALER_PATH)
-label_encoder = joblib.load(ENCODER_PATH)
+@st.cache_resource
+def load_artifacts():
+    model = load_model(MODEL_PATH, compile=False)
+    scaler = joblib.load(SCALER_PATH)
+    encoder = joblib.load(ENCODER_PATH)
+    return model, scaler, encoder
+
+
+model, scaler, label_encoder = load_artifacts()
 
 
 # ============================================================
-# INPUTS (MUST MATCH TRAINING ORDER)
+# INPUTS
 # ============================================================
 
 st.subheader("Enter Scientific Features")
 
 features = np.array([[
-    st.number_input("Orbital Period", value=10.0),
-    st.number_input("Impact Parameter", value=0.5),
-    st.number_input("Transit Duration", value=5.0),
-    st.number_input("Transit Depth", value=500.0),
-    st.number_input("Planet Radius", value=2.0),
-    st.number_input("Equilibrium Temperature", value=700.0),
-    st.number_input("Insolation Flux", value=100.0),
-    st.number_input("Signal-to-Noise Ratio", value=20.0),
-    st.number_input("Stellar Effective Temperature", value=5500.0),
-    st.number_input("Stellar Surface Gravity", value=4.4),
-    st.number_input("Stellar Radius", value=1.0),
+    st.number_input("Orbital Period", 10.0),
+    st.number_input("Impact Parameter", 0.5),
+    st.number_input("Transit Duration", 5.0),
+    st.number_input("Transit Depth", 500.0),
+    st.number_input("Planet Radius", 2.0),
+    st.number_input("Equilibrium Temperature", 700.0),
+    st.number_input("Insolation Flux", 100.0),
+    st.number_input("Signal-to-Noise Ratio", 20.0),
+    st.number_input("Stellar Temperature", 5500.0),
+    st.number_input("Stellar Gravity", 4.4),
+    st.number_input("Stellar Radius", 1.0),
 ]])
 
 
