@@ -1,23 +1,10 @@
 import os
 os.environ["TF_USE_LEGACY_KERAS"] = "1"
+
 import numpy as np
 import streamlit as st
 import joblib
-import tensorflow as tf
 from tensorflow.keras.models import load_model
-
-# ============================================================
-# Patch InputLayer to ignore unsupported args
-from tensorflow.keras.layers import InputLayer
-
-original_init = InputLayer.__init__
-
-def patched_init(self, *args, **kwargs):
-    kwargs.pop("batch_shape", None)
-    kwargs.pop("optional", None)
-    return original_init(self, *args, **kwargs)
-
-InputLayer.__init__ = patched_init
 
 # ============================================================
 # PAGE CONFIG
@@ -46,7 +33,7 @@ SCALER_PATH = os.path.join(MODEL_DIR, "scaler.pkl")
 ENCODER_PATH = os.path.join(MODEL_DIR, "label_encoder.pkl")
 
 # ============================================================
-# LOAD ARTIFACTS (CACHED)
+# LOAD ARTIFACTS
 # ============================================================
 @st.cache_resource
 def load_artifacts():
@@ -91,13 +78,13 @@ features = np.array([[
     koi_srad
 ]])
 
-features_scaled = scaler.transform(features)
-
 # ============================================================
 # PREDICTION
 # ============================================================
 if st.button("Predict"):
-    probabilities = model.predict(features)
+    features_scaled = scaler.transform(features)   # ✅ correct place
+
+    probabilities = model.predict(features_scaled)  # ✅ FIXED
 
     predicted_index = np.argmax(probabilities)
     predicted_class = label_encoder.inverse_transform([predicted_index])[0]
