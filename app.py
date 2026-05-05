@@ -15,20 +15,13 @@ ENCODER_PATH = "models/label_encoder.pkl"
 # =========================
 @st.cache_resource
 def load_artifacts():
+    model = tf.keras.models.load_model(
+        MODEL_PATH,
+        compile=False
+    )
+
     scaler = joblib.load(SCALER_PATH)
     encoder = joblib.load(ENCODER_PATH)
-
-    # IMPORTANT FIX:
-    # custom_objects prevents crash from unsupported fields like quantization_config
-    try:
-        model = tf.keras.models.load_model(
-            MODEL_PATH,
-            compile=False,
-            safe_mode=False
-        )
-    except Exception as e:
-        st.error("Model failed to load. Check TensorFlow/Keras version mismatch.")
-        st.stop()
 
     return model, scaler, encoder
 
@@ -45,6 +38,9 @@ st.write("Predict whether a Kepler Object of Interest is CANDIDATE, CONFIRMED, o
 
 st.subheader("Enter Scientific Features")
 
+# =========================
+# FEATURES (YOUR LIST)
+# =========================
 orbital_period = st.number_input("Orbital Period", value=10.0)
 impact_parameter = st.number_input("Impact Parameter", value=0.5)
 transit_duration = st.number_input("Transit Duration", value=5.0)
