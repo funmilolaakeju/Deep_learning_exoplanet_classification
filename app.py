@@ -1,10 +1,10 @@
 import os
-
+os.environ["TF_USE_LEGACY_KERAS"] = "1"
 import numpy as np
 import streamlit as st
 import joblib
-from tensorflow.keras.models import load_model
-
+import keras
+from keras.models import load_model
 # ============================================================
 # PAGE CONFIG
 # ============================================================
