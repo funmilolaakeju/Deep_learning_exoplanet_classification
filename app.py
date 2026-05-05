@@ -5,11 +5,22 @@ import joblib
 import tensorflow as tf
 from tensorflow.keras.models import load_model
 
+# ============================================================
+# Patch InputLayer to ignore unsupported args
+from tensorflow.keras.layers import InputLayer
+
+original_init = InputLayer.__init__
+
+def patched_init(self, *args, **kwargs):
+    kwargs.pop("batch_shape", None)
+    kwargs.pop("optional", None)
+    return original_init(self, *args, **kwargs)
+
+InputLayer.__init__ = patched_init
 
 # ============================================================
 # PAGE CONFIG
 # ============================================================
-
 st.set_page_config(
     page_title="Exoplanet Classifier",
     page_icon="🪐",
@@ -23,11 +34,9 @@ st.write(
     "CANDIDATE, CONFIRMED, or FALSE POSITIVE."
 )
 
-
 # ============================================================
 # PATHS
 # ============================================================
-
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_DIR = os.path.join(BASE_DIR, "models")
 
@@ -35,30 +44,21 @@ MODEL_PATH = os.path.join(MODEL_DIR, "exoplanet_model_fixed.h5")
 SCALER_PATH = os.path.join(MODEL_DIR, "scaler.pkl")
 ENCODER_PATH = os.path.join(MODEL_DIR, "label_encoder.pkl")
 
-
 # ============================================================
-# LOAD ARTIFACTS
+# LOAD ARTIFACTS (CACHED)
 # ============================================================
-
 @st.cache_resource
 def load_artifacts():
-
     model = load_model(MODEL_PATH, compile=False)
-
     scaler = joblib.load(SCALER_PATH)
-
-    label_encoder = joblib.load(ENCODER_PATH)
-
-    return model, scaler, label_encoder
-
+    encoder = joblib.load(ENCODER_PATH)
+    return model, scaler, encoder
 
 model, scaler, label_encoder = load_artifacts()
 
-
 # ============================================================
-# INPUT FEATURES (MUST MATCH TRAINING ORDER)
+# USER INPUT
 # ============================================================
-
 st.subheader("Enter Scientific Features")
 
 koi_period = st.number_input("Orbital Period", value=10.0)
@@ -68,17 +68,15 @@ koi_depth = st.number_input("Transit Depth", value=500.0)
 koi_prad = st.number_input("Planet Radius", value=2.0)
 koi_teq = st.number_input("Equilibrium Temperature", value=700.0)
 koi_insol = st.number_input("Insolation Flux", value=100.0)
-koi_model_snr = st.number_input("Signal-to-Noise Ratio", value=20.0)
+koi_model_snr = st.number_input("Model Signal-to-Noise Ratio", value=20.0)
 koi_steff = st.number_input("Stellar Effective Temperature", value=5500.0)
 koi_slogg = st.number_input("Stellar Surface Gravity", value=4.4)
 koi_srad = st.number_input("Stellar Radius", value=1.0)
 
-
 # ============================================================
-# FEATURE ARRAY
+# PREPARE INPUT
 # ============================================================
-
-features = np.array([[
+features = np.array([[ 
     koi_period,
     koi_impact,
     koi_duration,
@@ -92,27 +90,18 @@ features = np.array([[
     koi_srad
 ]])
 
-
-# ============================================================
-# SCALE INPUT
-# ============================================================
-
 features_scaled = scaler.transform(features)
-
 
 # ============================================================
 # PREDICTION
 # ============================================================
-
 if st.button("Predict"):
+    probabilities = model.predict(features)
 
-    probabilities = model.predict(features_scaled)
+    predicted_index = np.argmax(probabilities)
+    predicted_class = label_encoder.inverse_transform([predicted_index])[0]
 
-    predicted_index = np.argmax(probabilities, axis=1)[0]
-
-    predicted_label = label_encoder.inverse_transform([predicted_index])[0]
-
-    st.success(f"Prediction: {predicted_label}")
+    st.success(f"Prediction: {predicted_class}")
 
     st.subheader("Class Probabilities")
 
