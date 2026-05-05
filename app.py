@@ -1,3 +1,4 @@
+import os
 import streamlit as st
 import numpy as np
 import joblib
@@ -15,20 +16,24 @@ st.set_page_config(
 st.title("🪐 Deep Learning Exoplanet Classification")
 
 # =========================
-# PATHS
+# FIXED PATHS
 # =========================
-MODEL_PATH = "model.keras"
-SCALER_PATH = "scaler.pkl"
-ENCODER_PATH = "encoder.pkl"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+MODEL_PATH = os.path.join(BASE_DIR, "models", "exoplanet_model_fixed.h5")
+SCALER_PATH = os.path.join(BASE_DIR, "models", "scaler.pkl")
+ENCODER_PATH = os.path.join(BASE_DIR, "models", "label_encoder.pkl")
 
 # =========================
 # LOAD ARTIFACTS
 # =========================
 @st.cache_resource
 def load_artifacts():
+
     model = keras.models.load_model(MODEL_PATH, compile=False)
     scaler = joblib.load(SCALER_PATH)
     encoder = joblib.load(ENCODER_PATH)
+
     return model, scaler, encoder
 
 model, scaler, label_encoder = load_artifacts()
@@ -50,16 +55,10 @@ features = np.array([[f1, f2, f3, f4]])
 # =========================
 if st.button("Predict"):
 
-    # scale input
     scaled_features = scaler.transform(features)
-
-    # predict
     prediction = model.predict(scaled_features)
 
-    # get class
     class_id = np.argmax(prediction, axis=1)
-
-    # decode label
     result = label_encoder.inverse_transform(class_id)
 
     st.success(f"Prediction: {result[0]}")
