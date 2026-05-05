@@ -1,50 +1,54 @@
 import streamlit as st
 import numpy as np
 import joblib
-from tensorflow import keras
+import tensorflow as tf
 
 # =========================
-# Paths
+# PATHS
 # =========================
 MODEL_PATH = "models/exoplanet_model.keras"
 SCALER_PATH = "models/scaler.pkl"
 ENCODER_PATH = "models/label_encoder.pkl"
 
 # =========================
-# Load Artifacts
+# LOAD ARTIFACTS
 # =========================
 @st.cache_resource
 def load_artifacts():
-    model = keras.models.load_model(MODEL_PATH, compile=False)
+    model = tf.keras.models.load_model(
+        MODEL_PATH,
+        compile=False
+    )
+
     scaler = joblib.load(SCALER_PATH)
     encoder = joblib.load(ENCODER_PATH)
+
     return model, scaler, encoder
 
-model, scaler, label_encoder = load_artifacts()
+
+model, scaler, encoder = load_artifacts()
 
 # =========================
 # UI
 # =========================
-st.title("🪐 Exoplanet Classification")
+st.title("🪐 Exoplanet Classifier")
 
-st.write("Enter feature values to predict exoplanet class.")
+st.write("Enter feature values:")
 
-# Example: 11 features
-features = []
+inputs = []
 for i in range(11):
-    val = st.number_input(f"Feature {i+1}", value=0.0)
-    features.append(val)
+    inputs.append(st.number_input(f"Feature {i+1}", value=0.0))
 
 # =========================
-# Prediction
+# PREDICTION
 # =========================
 if st.button("Predict"):
-    input_data = np.array(features).reshape(1, -1)
-    input_scaled = scaler.transform(input_data)
+    X = np.array(inputs).reshape(1, -1)
+    X = scaler.transform(X)
 
-    prediction = model.predict(input_scaled)
-    predicted_class = np.argmax(prediction, axis=1)
+    pred = model.predict(X)
+    class_id = np.argmax(pred)
 
-    label = label_encoder.inverse_transform(predicted_class)
+    label = encoder.inverse_transform([class_id])[0]
 
-    st.success(f"Prediction: {label[0]}")
+    st.success(f"Prediction: {label}")
