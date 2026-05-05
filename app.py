@@ -7,7 +7,7 @@ from tensorflow.keras.models import load_model
 
 
 # ============================================================
-# UI
+# PAGE CONFIG
 # ============================================================
 
 st.set_page_config(
@@ -37,62 +37,84 @@ ENCODER_PATH = os.path.join(MODEL_DIR, "label_encoder.pkl")
 
 
 # ============================================================
-# SAFE LOAD (FIX FOR YOUR ERROR)
+# LOAD ARTIFACTS
 # ============================================================
 
 @st.cache_resource
 def load_artifacts():
+
     model = load_model(MODEL_PATH, compile=False)
+
     scaler = joblib.load(SCALER_PATH)
-    encoder = joblib.load(ENCODER_PATH)
-    return model, scaler, encoder
+
+    label_encoder = joblib.load(ENCODER_PATH)
+
+    return model, scaler, label_encoder
 
 
 model, scaler, label_encoder = load_artifacts()
 
 
 # ============================================================
-# INPUTS
+# INPUT FEATURES (MUST MATCH TRAINING ORDER)
 # ============================================================
 
 st.subheader("Enter Scientific Features")
 
+koi_period = st.number_input("Orbital Period", value=10.0)
+koi_impact = st.number_input("Impact Parameter", value=0.5)
+koi_duration = st.number_input("Transit Duration", value=5.0)
+koi_depth = st.number_input("Transit Depth", value=500.0)
+koi_prad = st.number_input("Planet Radius", value=2.0)
+koi_teq = st.number_input("Equilibrium Temperature", value=700.0)
+koi_insol = st.number_input("Insolation Flux", value=100.0)
+koi_model_snr = st.number_input("Signal-to-Noise Ratio", value=20.0)
+koi_steff = st.number_input("Stellar Effective Temperature", value=5500.0)
+koi_slogg = st.number_input("Stellar Surface Gravity", value=4.4)
+koi_srad = st.number_input("Stellar Radius", value=1.0)
+
+
+# ============================================================
+# FEATURE ARRAY
+# ============================================================
+
 features = np.array([[
-    st.number_input("Orbital Period", 10.0),
-    st.number_input("Impact Parameter", 0.5),
-    st.number_input("Transit Duration", 5.0),
-    st.number_input("Transit Depth", 500.0),
-    st.number_input("Planet Radius", 2.0),
-    st.number_input("Equilibrium Temperature", 700.0),
-    st.number_input("Insolation Flux", 100.0),
-    st.number_input("Signal-to-Noise Ratio", 20.0),
-    st.number_input("Stellar Temperature", 5500.0),
-    st.number_input("Stellar Gravity", 4.4),
-    st.number_input("Stellar Radius", 1.0),
+    koi_period,
+    koi_impact,
+    koi_duration,
+    koi_depth,
+    koi_prad,
+    koi_teq,
+    koi_insol,
+    koi_model_snr,
+    koi_steff,
+    koi_slogg,
+    koi_srad
 ]])
 
 
 # ============================================================
-# SCALE
+# SCALE INPUT
 # ============================================================
 
-features = scaler.transform(features)
+features_scaled = scaler.transform(features)
 
 
 # ============================================================
-# PREDICT
+# PREDICTION
 # ============================================================
 
 if st.button("Predict"):
 
-    probs = model.predict(features)
-    pred = np.argmax(probs)
+    probabilities = model.predict(features_scaled)
 
-    label = label_encoder.inverse_transform([pred])[0]
+    predicted_index = np.argmax(probabilities, axis=1)[0]
 
-    st.success(f"Prediction: {label}")
+    predicted_label = label_encoder.inverse_transform([predicted_index])[0]
 
-    st.subheader("Probabilities")
+    st.success(f"Prediction: {predicted_label}")
 
-    for cls, p in zip(label_encoder.classes_, probs[0]):
-        st.write(f"{cls}: {p:.4f}")
+    st.subheader("Class Probabilities")
+
+    for cls, prob in zip(label_encoder.classes_, probabilities[0]):
+        st.write(f"{cls}: {prob:.4f}")
