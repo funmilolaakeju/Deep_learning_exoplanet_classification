@@ -1,10 +1,9 @@
 import os
-os.environ["TF_USE_LEGACY_KERAS"] = "1"
 import numpy as np
 import streamlit as st
 import joblib
 import keras
-from keras.models import load_model
+
 # ============================================================
 # PAGE CONFIG
 # ============================================================
@@ -32,11 +31,11 @@ SCALER_PATH = os.path.join(MODEL_DIR, "scaler.pkl")
 ENCODER_PATH = os.path.join(MODEL_DIR, "label_encoder.pkl")
 
 # ============================================================
-# LOAD ARTIFACTS
+# LOAD ARTIFACTS (CACHED)
 # ============================================================
 @st.cache_resource
 def load_artifacts():
-    model = load_model(MODEL_PATH, compile=False)
+    model = keras.models.load_model(MODEL_PATH, compile=False)
     scaler = joblib.load(SCALER_PATH)
     encoder = joblib.load(ENCODER_PATH)
     return model, scaler, encoder
@@ -63,7 +62,7 @@ koi_srad = st.number_input("Stellar Radius", value=1.0)
 # ============================================================
 # PREPARE INPUT
 # ============================================================
-features = np.array([[ 
+features = np.array([[
     koi_period,
     koi_impact,
     koi_duration,
@@ -77,13 +76,13 @@ features = np.array([[
     koi_srad
 ]])
 
+features_scaled = scaler.transform(features)
+
 # ============================================================
 # PREDICTION
 # ============================================================
 if st.button("Predict"):
-    features_scaled = scaler.transform(features)   # ✅ correct place
-
-    probabilities = model.predict(features_scaled)  # ✅ FIXED
+    probabilities = model.predict(features_scaled)
 
     predicted_index = np.argmax(probabilities)
     predicted_class = label_encoder.inverse_transform([predicted_index])[0]
