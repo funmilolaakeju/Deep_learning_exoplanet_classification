@@ -2,102 +2,63 @@ import os
 import numpy as np
 import pandas as pd
 import joblib
-from pathlib import Path
-from urllib.parse import quote
-
-import tensorflow as tf
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense, Dropout, Input
 
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder, StandardScaler
-from sklearn.utils.class_weight import compute_class_weight
-from sklearn.metrics import accuracy_score, classification_report
+from sklearn.preprocessing import StandardScaler, LabelEncoder
 
-
-# =========================
-# CONFIG
-# =========================
-
-SEED = 42
-np.random.seed(SEED)
-tf.random.set_seed(SEED)
-
-FEATURE_COLUMNS = [
-    "koi_period",
-    "koi_impact",
-    "koi_duration",
-    "koi_depth",
-    "koi_prad",
-    "koi_teq",
-    "koi_insol",
-    "koi_model_snr",
-    "koi_steff",
-    "koi_slogg",
-    "koi_srad",
-]
-
-TARGET_COLUMN = "koi_disposition"
-
-MODEL_DIR = "models"
-Path(MODEL_DIR).mkdir(exist_ok=True)
-
+import tensorflow as tf
+from tensorflow import keras
+from tensorflow.keras import layers
 
 # =========================
-# DATA
+# Paths
 # =========================
+MODEL_PATH = "models/exoplanet_model.keras"
+SCALER_PATH = "models/scaler.pkl"
+ENCODER_PATH = "models/label_encoder.pkl"
 
+os.makedirs("models", exist_ok=True)
+
+# =========================
+# Load Dataset
+# =========================
 def load_data():
-    query = f"""
-    SELECT {', '.join([TARGET_COLUMN] + FEATURE_COLUMNS)}
-    FROM cumulative
-    WHERE koi_disposition IS NOT NULL
-    """
+    df = pd.read_csv("data/exoplanet_data.csv")
 
-    url = (
-        "https://exoplanetarchive.ipac.caltech.edu/TAP/sync"
-        f"?query={quote(query)}&format=csv"
-    )
+    X = df.drop("label", axis=1)
+    y = df["label"]
 
-    df = pd.read_csv(url).dropna()
-    return df
-
+    return X, y
 
 # =========================
-# PREPROCESS
+# Preprocessing
 # =========================
-
-def preprocess(df):
-    X = df[FEATURE_COLUMNS].values
-    y = df[TARGET_COLUMN].values
+def preprocess(X, y):
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
 
     encoder = LabelEncoder()
-    y = encoder.fit_transform(y)
+    y_encoded = encoder.fit_transform(y)
 
-    scaler = StandardScaler()
-    X = scaler.fit_transform(X)
-
-    return X, y, scaler, encoder
-
+    return X_scaled, y_encoded, scaler, encoder
 
 # =========================
-# MODEL
+# Build Model
 # =========================
+def build_model(input_dim):
+    model = keras.Sequential([
+        layers.Input(shape=(input_dim,)),
 
-def build_model(input_dim, num_classes):
-    model = Sequential([
-        Input(shape=(input_dim,)),
+        layers.Dense(256, activation="relu"),
+        layers.Dropout(0.35),
 
-        Dense(256, activation="relu"),
-        Dropout(0.35),
+        layers.Dense(128, activation="relu"),
+        layers.Dropout(0.3),
 
-        Dense(128, activation="relu"),
-        Dropout(0.30),
+        layers.Dense(64, activation="relu"),
+        layers.Dropout(0.2),
 
-        Dense(64, activation="relu"),
-        Dropout(0.20),
-
-        Dense(num_classes, activation="softmax"),
+        layers.Dense(3, activation="softmax")
     ])
 
     model.compile(
@@ -108,53 +69,43 @@ def build_model(input_dim, num_classes):
 
     return model
 
-
 # =========================
-# TRAIN
+# Training
 # =========================
-
 def train():
-    df = load_data()
-    X, y, scaler, encoder = preprocess(df)
+    print("Loading data...")
+    X, y = load_data()
 
-    joblib.dump(scaler, "models/scaler.pkl")
-    joblib.dump(encoder, "models/label_encoder.pkl")
+    print("Preprocessing...")
+    X, y, scaler, encoder = preprocess(X, y)
 
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y,
-        test_size=0.2,
-        random_state=SEED,
-        stratify=y
+    X_train, X_val, y_train, y_val = train_test_split(
+        X, y, test_size=0.2, random_state=42
     )
 
-    class_weights = compute_class_weight(
-        class_weight="balanced",
-        classes=np.unique(y_train),
-        y=y_train
-    )
+    print("Building model...")
+    model = build_model(X.shape[1])
 
-    class_weight_dict = dict(zip(np.unique(y_train), class_weights))
-
-    model = build_model(X.shape[1], len(np.unique(y)))
-
+    print("Training...")
     model.fit(
-        X_train,
-        y_train,
-        validation_data=(X_test, y_test),
-        epochs=100,
-        batch_size=32,
-        class_weight=class_weight_dict,
-        verbose=1
+        X_train, y_train,
+        validation_data=(X_val, y_val),
+        epochs=30,
+        batch_size=32
     )
 
-    preds = np.argmax(model.predict(X_test), axis=1)
+    print("Saving EVERYTHING (correct way)...")
 
-    print("\nAccuracy:", accuracy_score(y_test, preds))
-    print(classification_report(y_test, preds))
-    model.save("models/exoplanet_model.keras")
+    # ✅ SAVE FULL MODEL (NO JSON, NO WEIGHTS ONLY)
+    model.save(MODEL_PATH)
 
-    print("Model saved successfully")
+    joblib.dump(scaler, SCALER_PATH)
+    joblib.dump(encoder, ENCODER_PATH)
 
+    print("✅ DONE — No more loading issues.")
 
+# =========================
+# Run
+# =========================
 if __name__ == "__main__":
     train()
