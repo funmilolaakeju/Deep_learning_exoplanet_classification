@@ -1,9 +1,9 @@
+import os
 import numpy as np
 import pandas as pd
 import joblib
 from pathlib import Path
 from urllib.parse import quote
-import json
 
 import tensorflow as tf
 from tensorflow.keras.models import Sequential
@@ -39,8 +39,8 @@ FEATURE_COLUMNS = [
 
 TARGET_COLUMN = "koi_disposition"
 
-MODEL_DIR = Path("models")
-MODEL_DIR.mkdir(exist_ok=True)
+MODEL_DIR = "models"
+Path(MODEL_DIR).mkdir(exist_ok=True)
 
 
 # =========================
@@ -85,7 +85,6 @@ def preprocess(df):
 # =========================
 
 def build_model(input_dim, num_classes):
-
     model = Sequential([
         Input(shape=(input_dim,)),
 
@@ -115,12 +114,11 @@ def build_model(input_dim, num_classes):
 # =========================
 
 def train():
-
     df = load_data()
     X, y, scaler, encoder = preprocess(df)
 
-    joblib.dump(scaler, MODEL_DIR / "scaler.pkl")
-    joblib.dump(encoder, MODEL_DIR / "label_encoder.pkl")
+    joblib.dump(scaler, "models/scaler.pkl")
+    joblib.dump(encoder, "models/label_encoder.pkl")
 
     X_train, X_test, y_train, y_test = train_test_split(
         X, y,
@@ -140,9 +138,10 @@ def train():
     model = build_model(X.shape[1], len(np.unique(y)))
 
     model.fit(
-        X_train, y_train,
+        X_train,
+        y_train,
         validation_data=(X_test, y_test),
-        epochs=50,
+        epochs=100,
         batch_size=32,
         class_weight=class_weight_dict,
         verbose=1
@@ -152,17 +151,9 @@ def train():
 
     print("\nAccuracy:", accuracy_score(y_test, preds))
     print(classification_report(y_test, preds))
+    model.save("models/exoplanet_model.keras")
 
-    # =========================
-    # SAVE (FINAL SAFE FORMAT)
-    # =========================
-
-    with open(MODEL_DIR / "model_architecture.json", "w") as f:
-        f.write(model.to_json())
-
-    model.save_weights(MODEL_DIR / "exoplanet_weights.h5")
-
-    print("\n✅ TRAINING COMPLETE (SAFE FORMAT SAVED)")
+    print("Model saved successfully")
 
 
 if __name__ == "__main__":
