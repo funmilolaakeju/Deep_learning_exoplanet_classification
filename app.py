@@ -6,7 +6,6 @@ import tensorflow as tf
 # =========================
 # PATHS
 # =========================
-MODEL_PATH = "models/exoplanet_model.keras"
 SCALER_PATH = "models/scaler.pkl"
 ENCODER_PATH = "models/label_encoder.pkl"
 
@@ -15,13 +14,19 @@ ENCODER_PATH = "models/label_encoder.pkl"
 # =========================
 @st.cache_resource
 def load_artifacts():
-    model = tf.keras.models.load_model(
-        MODEL_PATH,
-        compile=False
-    )
-
     scaler = joblib.load(SCALER_PATH)
     encoder = joblib.load(ENCODER_PATH)
+
+    num_classes = len(encoder.classes_)
+
+    # Rebuilt architecture (must match training)
+    model = tf.keras.Sequential([
+        tf.keras.layers.Dense(256, activation='relu', input_shape=(11,)),
+        tf.keras.layers.Dropout(0.3),
+        tf.keras.layers.Dense(128, activation='relu'),
+        tf.keras.layers.Dropout(0.3),
+        tf.keras.layers.Dense(num_classes, activation='softmax')
+    ])
 
     return model, scaler, encoder
 
@@ -39,7 +44,7 @@ st.write("Predict whether a Kepler Object of Interest is CANDIDATE, CONFIRMED, o
 st.subheader("Enter Scientific Features")
 
 # =========================
-# FEATURES (YOUR LIST)
+# FEATURE INPUTS (REAL NAMES)
 # =========================
 orbital_period = st.number_input("Orbital Period", value=10.0)
 impact_parameter = st.number_input("Impact Parameter", value=0.5)
