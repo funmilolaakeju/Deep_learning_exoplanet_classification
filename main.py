@@ -4,6 +4,7 @@ import pandas as pd
 import joblib
 from pathlib import Path
 from urllib.parse import quote
+import json
 
 import tensorflow as tf
 from tensorflow.keras.models import Sequential
@@ -83,13 +84,13 @@ def preprocess(df):
 
 
 # ============================================================
-# MODEL (FIXED ARCHITECTURE)
+# MODEL
 # ============================================================
 
 def build_model(input_dim, num_classes):
 
     model = Sequential([
-        Input(shape=(input_dim,)),  # 🔥 CRITICAL FIX (removes batch_shape issue)
+        Input(shape=(input_dim,)),
 
         Dense(256, activation="relu"),
         Dropout(0.35),
@@ -133,7 +134,7 @@ def train():
         stratify=y
     )
 
-    # Class weights (important for imbalance)
+    # Class weights
     class_weights = compute_class_weight(
         class_weight="balanced",
         classes=np.unique(y_train),
@@ -144,10 +145,8 @@ def train():
         i: w for i, w in zip(np.unique(y_train), class_weights)
     }
 
-    # Build model
     model = build_model(X.shape[1], len(np.unique(y)))
 
-    # Train
     model.fit(
         X_train,
         y_train,
@@ -158,22 +157,27 @@ def train():
         verbose=1
     )
 
-    # Evaluate
     preds = np.argmax(model.predict(X_test), axis=1)
 
     print("\nAccuracy:", accuracy_score(y_test, preds))
     print("\nClassification Report:\n")
     print(classification_report(y_test, preds))
 
-
     tf.keras.backend.clear_session()
 
-    model.save(
-        "models/exoplanet_model_fixed.h5",
-        save_format="h5"
-    )
+    # ========================================================
+    # SAVE (FIXED: SAFE FORMAT)
+    # ========================================================
 
-    print("\n✅ Model saved successfully (.h5 clean version)")
+    # Save architecture
+    model_json = model.to_json()
+    with open("models/model_architecture.json", "w") as f:
+        f.write(model_json)
+
+    # Save weights
+    model.save_weights("models/exoplanet_weights.h5")
+
+    print("\n✅ Model saved in SAFE format (architecture + weights)")
 
 
 # ============================================================
