@@ -1,4 +1,3 @@
-import os
 import numpy as np
 import pandas as pd
 import joblib
@@ -16,9 +15,9 @@ from sklearn.utils.class_weight import compute_class_weight
 from sklearn.metrics import accuracy_score, classification_report
 
 
-# ============================================================
+# =========================
 # CONFIG
-# ============================================================
+# =========================
 
 SEED = 42
 np.random.seed(SEED)
@@ -40,13 +39,13 @@ FEATURE_COLUMNS = [
 
 TARGET_COLUMN = "koi_disposition"
 
-MODEL_DIR = "models"
-Path(MODEL_DIR).mkdir(exist_ok=True)
+MODEL_DIR = Path("models")
+MODEL_DIR.mkdir(exist_ok=True)
 
 
-# ============================================================
-# DATA LOADING
-# ============================================================
+# =========================
+# DATA
+# =========================
 
 def load_data():
     query = f"""
@@ -60,15 +59,13 @@ def load_data():
         f"?query={quote(query)}&format=csv"
     )
 
-    df = pd.read_csv(url)
-    df = df.dropna()
-
+    df = pd.read_csv(url).dropna()
     return df
 
 
-# ============================================================
-# PREPROCESSING
-# ============================================================
+# =========================
+# PREPROCESS
+# =========================
 
 def preprocess(df):
     X = df[FEATURE_COLUMNS].values
@@ -83,9 +80,9 @@ def preprocess(df):
     return X, y, scaler, encoder
 
 
-# ============================================================
+# =========================
 # MODEL
-# ============================================================
+# =========================
 
 def build_model(input_dim, num_classes):
 
@@ -113,45 +110,39 @@ def build_model(input_dim, num_classes):
     return model
 
 
-# ============================================================
-# TRAINING
-# ============================================================
+# =========================
+# TRAIN
+# =========================
 
 def train():
 
     df = load_data()
     X, y, scaler, encoder = preprocess(df)
 
-    # Save preprocessors
-    joblib.dump(scaler, "models/scaler.pkl")
-    joblib.dump(encoder, "models/label_encoder.pkl")
+    joblib.dump(scaler, MODEL_DIR / "scaler.pkl")
+    joblib.dump(encoder, MODEL_DIR / "label_encoder.pkl")
 
     X_train, X_test, y_train, y_test = train_test_split(
-        X,
-        y,
+        X, y,
         test_size=0.2,
         random_state=SEED,
         stratify=y
     )
 
-    # Class weights
     class_weights = compute_class_weight(
         class_weight="balanced",
         classes=np.unique(y_train),
         y=y_train
     )
 
-    class_weight_dict = {
-        i: w for i, w in zip(np.unique(y_train), class_weights)
-    }
+    class_weight_dict = dict(zip(np.unique(y_train), class_weights))
 
     model = build_model(X.shape[1], len(np.unique(y)))
 
     model.fit(
-        X_train,
-        y_train,
+        X_train, y_train,
         validation_data=(X_test, y_test),
-        epochs=100,
+        epochs=50,
         batch_size=32,
         class_weight=class_weight_dict,
         verbose=1
@@ -160,29 +151,19 @@ def train():
     preds = np.argmax(model.predict(X_test), axis=1)
 
     print("\nAccuracy:", accuracy_score(y_test, preds))
-    print("\nClassification Report:\n")
     print(classification_report(y_test, preds))
 
-    tf.keras.backend.clear_session()
+    # =========================
+    # SAVE (FINAL SAFE FORMAT)
+    # =========================
 
-    # ========================================================
-    # SAVE (FIXED: SAFE FORMAT)
-    # ========================================================
+    with open(MODEL_DIR / "model_architecture.json", "w") as f:
+        f.write(model.to_json())
 
-    # Save architecture
-    model_json = model.to_json()
-    with open("models/model_architecture.json", "w") as f:
-        f.write(model_json)
+    model.save_weights(MODEL_DIR / "exoplanet_weights.h5")
 
-    # Save weights
-    model.save_weights("models/exoplanet_weights.h5")
+    print("\n✅ TRAINING COMPLETE (SAFE FORMAT SAVED)")
 
-    print("\n✅ Model saved in SAFE format (architecture + weights)")
-
-
-# ============================================================
-# RUN
-# ============================================================
 
 if __name__ == "__main__":
     train()
